@@ -315,7 +315,7 @@ if __name__=="__main__":
     plt.show()
 
     precision2=np.zeros(len(A)-1)
-    for i in range(len(A)-2,-1,30):
+    for i in range(len(A)-2,30,-1):
         A,phi_tilde=a.left_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
         result2=a.test2(A,data[6000:7000],target[6000:7000],i)
         precision2[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
