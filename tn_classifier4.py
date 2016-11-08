@@ -248,7 +248,7 @@ class tn_classifier():
         B=self.gradient(B,phi_tilde,target)
         maxB=B.max()
         A=self.right_updateA(B,A,i)
-        if i<len(A):
+        if i<len(A)-2:
             # phi_tilde=[self.right_updatephi(A,data_i,phi_tilde_i,i) for data_i,phi_tilde_i in zip(data,phi_tilde)]
             phi_tilde=[self.getphi(A,data_i,i+1) for data_i in data]
         return A,phi_tilde
