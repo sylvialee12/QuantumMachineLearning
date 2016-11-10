@@ -20,7 +20,7 @@ def load_data():
     return mnist
 
 @functimer
-def data_process(mnist,withpool=1):
+def data_process(mnist,n):
 
     reshaped_tar=mnist.target.reshape([len(mnist.target),1])
     Data=np.concatenate((mnist.data, reshaped_tar), axis=1)
@@ -39,16 +39,16 @@ def data_process(mnist,withpool=1):
     lvector=np.zeros([target.shape[0],10])
     for (i,l) in enumerate(lvector):
         l[int(target[i])]=1
-    if withpool==0:
+    if n==0 or n==1:
         return data,lvector
     else:
         pixel=int(np.sqrt(data0.shape[1]))
         psi3=psi0.reshape([data0.shape[0],pixel,pixel])
-        u=np.kron(np.eye(pixel//4),np.array([[1/4],[1/4],[1/4],[1/4]]))
+        u=np.kron(np.eye(pixel//n),1/n*np.ones([n,1]))
         psi_pooled=np.tensordot(psi3,u,axes=(-1,0))
         psi_pooled=np.tensordot(np.transpose(u),psi_pooled,axes=(-1,1))
         psi_pooled=np.transpose(psi_pooled,[1,0,2])
-        psi_pooled=psi_pooled.reshape([data0.shape[0],pixel//4*(pixel//4)])
+        psi_pooled=psi_pooled.reshape([data0.shape[0],pixel//n*(pixel//n)])
         psi1_pooled=np.cos(np.pi/2*psi_pooled)
         psi2_pooled=np.sin(np.pi/2*psi_pooled)
         data_pooled=np.vstack([psi1_pooled,psi2_pooled])
