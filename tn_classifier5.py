@@ -1,12 +1,10 @@
 __author__ = 'xlibb'
-__author__ = 'xlibb'
 import numpy as np
 from numpy import random
 import matplotlib.pyplot as plt
 import copy
 import mnist
 from time import time
-from sklearn.preprocessing import normalize
 import csv
 
 
@@ -30,15 +28,16 @@ class tn_classifier():
         :param l: the site with labeling
 
         """
-        self.D=D
-        self.n=n
-        self.N = N
+        self.D=D  # bond dimension of the tensor network
+        self.n=n  # the number of classification
+        self.N = N #
         self.d=2
         self.eps=eps
 
 
     def initialize(self):
         """
+        Initialize tensors A, choosing the canonical gauge(QR decomposition)
         :return: randomized weight tensor A
         """
         N=self.N
@@ -69,7 +68,7 @@ class tn_classifier():
         dmin=min(tem.shape)
         A[N-1]=np.reshape(Q,[self.d,dr1,1])
         norm=self.normalization(A)
-        # A=[a/np.sqrt(norm) for a in A]
+        A=[a/np.sqrt(norm) for a in A]
         return A
 
 
@@ -120,7 +119,6 @@ class tn_classifier():
 
     def right_getB(self,A,l):
         """
-
         :param A:
         :return:
         """
@@ -130,7 +128,6 @@ class tn_classifier():
 
     def left_getB(self, A, l):
         """
-
         :param A:
         :return:
         """
@@ -169,10 +166,8 @@ class tn_classifier():
         :return:
         """
         d0,d1,d2,d3,d4=B.shape
-        Nt=len(tilde_phi)
 
         j=0
-        alpha=0.1
         s=1
         while s==1 and j<step:
             c = 0
@@ -186,15 +181,19 @@ class tn_classifier():
                 temp=np.kron(temp,l-f)
                 temp=np.reshape(temp,[d0,d1,d2,d3,d4])
                 c+=temp
-            # if np.abs(c).max()>self.eps:
             B+=c
             j+=1
-            # else:
-            #     s=0
+
         return B
 
 
     def right_updateA(self,updatedB,A,l):
+        """
+        :param updatedB:
+        :param A:
+        :param l:
+        :return:
+        """
 
         d0,d1,d2,d3,d4=updatedB.shape
         B=np.transpose(updatedB,[0,2,1,3,4])
@@ -228,7 +227,13 @@ class tn_classifier():
         return tildephio
 
     def left_updatephi(self,updatedA,phi,tildephio,l):
-
+        """
+        :param updatedA:
+        :param phi:
+        :param tildephio:
+        :param l:
+        :return:
+        """
         temp=np.tensordot(updatedA[l+1],tildephio[1],axes=(0,0))
         tildephio[3]=np.tensordot(temp,tildephio[3],axes=(1,0))
         tildephio[1]=phi[l]
@@ -242,6 +247,13 @@ class tn_classifier():
 
 
     def left_updateA(self,updatedB,A,l):
+        """
+        The weight tensor A
+        :param updatedB:
+        :param A:
+        :param l:
+        :return:
+        """
         d0,d1,d2,d3,d4=updatedB.shape
         B=np.transpose(updatedB,[0,2,4,1,3])
         B=np.reshape(B,[d0*d2*d4,d1*d3])
@@ -266,6 +278,15 @@ class tn_classifier():
         return phi_tilde
 
     def right_sweep(self,A,phi_tilde,data,target,i):
+        """
+        Sweep a step from i to i+1
+        :param A: Input weight parameter tensors
+        :param phi_tilde: input phi_tilde
+        :param data: training data
+        :param target: training target
+        :param i: the position of the output attached leg
+        :return:updated weight parameter tensor A and updated phi_tilde after sweep a step towards right hand sight
+        """
         print(i)
         B = self.right_getB(A, i)
         B=self.gradient(B,phi_tilde,target)
@@ -278,6 +299,15 @@ class tn_classifier():
 
 
     def left_sweep(self,A,phi_tilde,data,target,i):
+        """
+        Sweep a step from i to i-1
+        :param A:
+        :param phi_tilde:
+        :param data:
+        :param target:
+        :param i:
+        :return:
+        """
         print(i)
         B = self.left_getB(A, i)
         B=self.gradient(B,phi_tilde,target)
@@ -303,6 +333,14 @@ class tn_classifier():
 
 
     def test2(self,A,testdata,testvector,l):
+        """
+        Test the testdata after well-trained A.
+        :param A: Weight tensor after training
+        :param testdata: data to be test
+        :param testvector: data target to be test
+        :param l: the position of the attached output leg
+        :return:the test result
+        """
         result=[]
         B=self.right_getB(A,l)
         for (data,target) in zip(testdata,testvector):
@@ -344,25 +382,20 @@ class tn_classifier():
         precision.tofile(filename,sep=",",format="%10.5f")
 
 
-
-
-
-
-
 if __name__=="__main__":
     Mnist=mnist.load_data()
     data,target=mnist.data_process(Mnist,4)
     a=tn_classifier(len(data[0]),10,10,10**(-6))
     A=a.initialize()
-    phi_tilde=a.get_phi_set(data[0:200])
-    test_target=[np.argmax(l) for l in target[600:700]]
+    phi_tilde=a.get_phi_set(data[0:2000])
+    test_target=[np.argmax(l) for l in target[6000:7000]]
     precision=np.zeros(len(A)-1)
     for i in range(len(A)-1):
         if i>100:
             a
-        result2=a.test2(A,data[600:700],target[600:700],i)
+        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
         precision[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
-        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:200],target[0:200],i)
+        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
 
 
     plt.figure("Precision")
@@ -372,8 +405,8 @@ if __name__=="__main__":
     a.write_precision("precision1.csv",precision)
     precision2=np.zeros(len(A)-1)
     for i in range(len(A)-2,-1,-1):
-        A,phi_tilde=a.left_sweep(A,phi_tilde,data[0:200],target[0:200],i)
-        result2=a.test2(A,data[600:700],target[600:700],i)
+        A,phi_tilde=a.left_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
+        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
         precision2[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
 
     plt.figure("Precision")
@@ -383,16 +416,16 @@ if __name__=="__main__":
 
     precision3=np.zeros(len(A)-1)
     for i in range(len(A)-1):
-        result2=a.test2(A,data[600:700],target[600:700],i)
+        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
         precision3[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
-        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:200],target[0:200],i)
+        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
 
 
     plt.figure("Precision")
     plt.plot(precision3)
     plt.show()
     a.write_precision("precision3.csv",precision3)
-    A
+
 
 
 
