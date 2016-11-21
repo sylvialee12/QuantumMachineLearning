@@ -387,15 +387,17 @@ if __name__=="__main__":
     data,target=mnist.data_process(Mnist,4)
     a=tn_classifier(len(data[0]),10,10,10**(-6))
     A=a.initialize()
-    phi_tilde=a.get_phi_set(data[0:2000])
-    test_target=[np.argmax(l) for l in target[6000:7000]]
+    train_data,train_target=data[0:50000],target[0:50000]
+    test_data,test_target=data[50000:-1],target[50000:-1]
+    phi_tilde=a.get_phi_set(train_data)
+    test_result=[np.argmax(l) for l in test_target]
     precision=np.zeros(len(A)-1)
     for i in range(len(A)-1):
         if i>100:
             a
-        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
-        precision[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
-        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
+        result2=a.test2(A,test_data,test_target,i)
+        precision[i]=sum(np.array(result2)==np.array(test_result))*1.0/len(test_target)
+        A,phi_tilde=a.right_sweep(A,phi_tilde,train_data,train_target,i)
 
 
     plt.figure("Precision")
@@ -405,25 +407,24 @@ if __name__=="__main__":
 
     precision2=np.zeros(len(A)-1)
     for i in range(len(A)-2,-1,-1):
-        A,phi_tilde=a.left_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
-        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
-        precision2[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
+        A,phi_tilde=a.left_sweep(A,phi_tilde,train_data,train_target,i)
+        result2=a.test2(A,test_data,test_target,i)
+        precision2[i]=sum(np.array(result2)==np.array(test_result))*1.0/len(test_target)
 
     plt.figure("Precision")
     plt.plot(precision2)
 
     a.write_precision("precision2.csv",precision2)
-
     precision3=np.zeros(len(A)-1)
     for i in range(len(A)-1):
-        result2=a.test2(A,data[6000:7000],target[6000:7000],i)
+        result2=a.test2(A,test_data,test_target,i)
         precision3[i]=sum(np.array(result2)==np.array(test_target))*1.0/len(test_target)
-        A,phi_tilde=a.right_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
+        A,phi_tilde=a.right_sweep(A,phi_tilde,train_data,train_target,i)
 
 
     plt.figure("Precision")
     plt.plot(precision3)
-    plt.show()
+    plt.save("PrecisionFigure.png")
     a.write_precision("precision3.csv",precision3)
 
 

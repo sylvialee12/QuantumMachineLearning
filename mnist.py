@@ -58,6 +58,8 @@ def data_process(mnist,n):
         return data_pooled,lvector
 
 
+if __name__=="__main__":
+    print("yes")
 
 
 
