@@ -400,9 +400,9 @@ if __name__=="__main__":
 
     plt.figure("Precision")
     plt.plot(precision)
-    # a.write_result('A.csv',A)
-
     a.write_precision("precision1.csv",precision)
+
+
     precision2=np.zeros(len(A)-1)
     for i in range(len(A)-2,-1,-1):
         A,phi_tilde=a.left_sweep(A,phi_tilde,data[0:2000],target[0:2000],i)
