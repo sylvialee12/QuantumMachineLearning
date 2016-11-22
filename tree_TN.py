@@ -27,11 +27,11 @@ class tree_TN():
         :param nametuple: physical dimension, bond dimension
         :return: initial weight tensor
         """
-        self.Nlayer=np.log2(N)-1
+        self.Nlayer=np.log2(N)
         W=[[] for i in range(self.Nlayer)]
-        W[0]=[random.rand(self.d,self.d,self.d,self.d,self.Dbond) for i in range(N//4)]
+        W[0]=[random.rand(self.d,self.d,self.Dbond) for i in range(N//2)]
         for i in range(1,self.Nlayer-1):
-            W[i]=[random.rand(self.Dbond,self.Dbond,self.Dbond) for i in range(N//(2**(i+2)))]
+            W[i]=[random.rand(self.Dbond,self.Dbond,self.Dbond) for i in range(N//(2**(i+1)))]
         W[self.Nlayer]=[random.rand(self.Dbond,self.Dbond,self.Dout)]
         self.W=W
 
@@ -41,10 +41,10 @@ class tree_TN():
         :return:
         """
         for idx,w0 in enumerate(self.W[0]):
-            temp=np.reshape(w0,[self.d**4,self.Dbond])
+            temp=np.reshape(w0,[self.d**2,self.Dbond])
             dmin=min(temp.shape)
             Q,R=np.linalg.qr(temp)
-            self.W[0][idx]=np.reshape(Q,[self.d,self.d,self.d,self.d,dmin])
+            self.W[0][idx]=np.reshape(Q,[self.d,self.d,dmin])
 
         for i in range(1,self.Nlayer):
             for idx,wj in self.W[i]:
@@ -53,56 +53,72 @@ class tree_TN():
                 self.W[0][idx]=np.reshape(Q,[self.Dbond,self.Dbond,wj.shape[2]])
 
 
-
-    def contractmpo(self,MPO):
+    def contract_full(self,left_tensor,right_tensor,down_tensor,up_tensor):
         """
-
-        :param MPO:
+        :param left_tensor:
+        :param right_tensor:
+        :param up_tensor:
+        :param down_tensor:
         :return:
         """
-        n0=len(self.W[0])
-        mpo_contracted=[]
-        for i in range(n0):
-            j=4*i
-            while j<4*(i+1):
-                mpo_i=tensordot(MPO[j],MPO[j+1],axes=(-1,2))
-            mpo_i=transpose(mpo_i,[0,1,3,4,5,6,7,8,2,9])
-            mpo_contracted.append(mpo_i)
-        return mpo_contracted
+        #
+        # 
+        if len(left_tensor.shape)==len(right_tensor.shape) and up_tensor is not None:
+            temp=tensordot(left_tensor,right_tensor,axes=(3,2))
+            temp=tensordot(up_tensor,temp,axes=([0,1,[0,3]]))
+            temp=tensordot(temp,down_tensor,axes=([1,3],[0,1]))
+            output=temp.reshape(0,3,1,2)
+        elif up_tensor is None:
+            temp=tensordot(left_tensor,right_tensor,axes=(3,2))
+            temp=tensordot(temp,down_tensor,axes=([1,4],[0,1]))
+            output=temp.reshape(0,2,4,1,3)
+        elif len(left_tensor)==5:
+            temp=tensordot(left_tensor,right_tensor,axes=(4,2))
+            temp=tensordot(up_tensor,temp,axes=(1,4))
+            temp=tensordot(temp,down_tensor,axes=([4,6],[0,1]))
+            output=temp.reshape(1,6,4,5,0,2,3)
+        elif len(right_tensor)==5:
+            temp=tensordot(left_tensor,right_tensor,axes=(3,3))
+            temp=tensordot(up_tensor,temp,axes=(0,0))
+            temp=tensordot(temp,down_tensor,axes=([2,6],[0,1]))
+            output=temp.reshape(1,6,2,5,0,3,4)
+        elif len(left_tensor)==7:
+            temp=tensordot(left_tensor,right_tensor,axes=(3,2))
+            temp=tensordot(up_tensor,temp,axes=([0,1],[0,6]))
+            temp=tensordot(temp,down_tensor,axes=([1,6],[0,1]))
+            output=temp.reshape(0,6,1,5,2,3,4)
+        elif len(right_tensor)==7:
+            temp=tensordot(left_tensor,right_tensor,axes=(3,2))
+            temp=tensordot(up_tensor,temp,axes=([0,1],[0,3]))
+            temp=tensordot(temp,down_tensor,axes=([1,3],[0,1]))
+            output=temp.reshape(0,6,1,2,3,4,5)
+        return output
 
 
-    def conjugatepart(self,mpo_contracted):
-        pass
 
-    def environment(self,nlayer,m,mpo_contracted):
+    def environment(self,nlayer,m,mpo):
         """
         Calculate the environment of the nlayerth
         :param nlayer: the nth layer
         :param m: the mth tensor of nth layer
         :return: environment
         """
+        for i in range(self.Nlayer):
+            mpo_i=[]
+            for j in range(len(mpo)//2):
+                if i!=nlayer or j!=m:
+                    mpo_i.append(self.contract_full(mpo[2*j],mpo[2*j+1],self.W[i][j],self.W[i][j]))
+                else:
+                    mpo_i.append(self.contract_full(mpo[2*j],mpo[2*j+1],self.W[i][j],None))
+            mpo=mpo_i
 
-
-        if nlayer!=0:
-            W0=[tensordot(tensordot(w0,mpo0,axes=([0,1,2,3],[0,2,4,6])),w0,axes=([2,3,4,5],[0,1,2,3]))\
-                    for w0,mpo0 in zip(self.W[0],mpo_contracted)]
-            W0=[transpose(w,[0,3,1,2]) for w in W0]
-            f0=np.array([1])
-            for w in W0:
-                f0=tensordot(f0,w,axes=(-1,2))
-                pass
-
-
-            for i in range(1,nlayer):
-                pass
+        return np.squeeze(mpo)
 
 
 
+    def update(self,nlayer,m,mpo):
 
-
-    def update(self,nlayer,m,mpo_contracted):
-
-        gamma=self.environment(nlayer,m,mpo_contracted)
+        gamma=self.environment(nlayer,m,mpo)
         l=gamma.shape
         gamma1=gamma.reshape(np.prod(l[0:-1]),l[-1])
         dmin=min(gamma1)
