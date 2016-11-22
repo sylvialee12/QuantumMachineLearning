@@ -144,13 +144,15 @@ class tree_TN():
         :param MPO:
         :return:
         """
-        s=10
+        s=100
         while s>0:
             for i in range(self.Nlayer):
-                print(i)
                 for j in range(len(MPO)//(2**(i+1))):
                     self.update(i,j,MPO)
             s-=1
+            erg=self.energy(MPO)
+            print(erg)
+
 
 
     def magnetization(self,site):
@@ -160,9 +162,17 @@ class tree_TN():
         """
         pass
 
+    def energy(self,mpo):
+
+
+        gamma=self.environment(0,0,mpo)
+        erg=tensordot(self.W[0][0],gamma,axes=([0,1,2],[0,1,2]))
+        return erg
+
+
 
 if __name__=="__main__":
-    mpo=MPOIsing.Ising(16,-1,-1,0.3)
+    mpo=MPOIsing.Ising(16,-1,0,0.3)
     tree_tn=tree_TN(4,2,1)
     tree_tn.initialize(len(mpo))
     tree_tn.isometrize()
