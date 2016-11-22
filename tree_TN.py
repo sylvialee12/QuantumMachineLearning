@@ -54,6 +54,24 @@ class tree_TN():
                 Q,R=np.linalg.qr(temp)
                 self.W[i][idx]=np.reshape(Q,[self.Dbond,self.Dbond,wj.shape[2]])
 
+    def testIsometry(self):
+        """
+        :return:
+        """
+        mpo=[]
+        for w0 in self.W[0]:
+            tem=tensordot(w0,w0,axes=([0,1],[0,1]))
+            tem=tem.reshape(tem.shape[0],tem.shape[1],1,1)
+            mpo.append(tem)
+
+        for i in range(1,self.Nlayer):
+            mpo_i=[]
+            for j in range(len(mpo)//2):
+                mpo_i.append(self.contract_full(mpo[2*j],mpo[2*j+1],self.W[i][j],self.W[i][j]))
+            mpo=mpo_i
+        return np.squeeze(mpo)
+
+
 
     def contract_full(self,left_tensor,right_tensor,down_tensor,up_tensor):
         """
@@ -134,7 +152,10 @@ class tree_TN():
         gamma1=gamma.reshape(np.prod(l[0:-1]),l[-1])
         dmin=min(gamma1.shape)
         u,s,v=np.linalg.svd(gamma1)
-        self.W[nlayer][m]=-np.dot(transpose(v),transpose(u)[0:dmin,:]).reshape(l)
+        tem=-np.dot(transpose(v),transpose(u)[0:dmin,:])
+        tem=transpose(tem)
+        self.W[nlayer][m]=tem.reshape(l)
+
 
 
 
@@ -144,7 +165,7 @@ class tree_TN():
         :param MPO:
         :return:
         """
-        s=100
+        s=20
         while s>0:
             for i in range(self.Nlayer):
                 for j in range(len(MPO)//(2**(i+1))):
@@ -152,7 +173,6 @@ class tree_TN():
             s-=1
             erg=self.energy(MPO)
             print(erg)
-
 
 
     def magnetization(self,site):
@@ -172,10 +192,11 @@ class tree_TN():
 
 
 if __name__=="__main__":
-    mpo=MPOIsing.Ising(16,-1,0,0.3)
+    mpo=MPOIsing.Ising(32,-1,-1,0.3)
     tree_tn=tree_TN(4,2,1)
     tree_tn.initialize(len(mpo))
     tree_tn.isometrize()
+    print(tree_tn.testIsometry())
     tree_tn.sweep(mpo)
     tree_tn.W
 
