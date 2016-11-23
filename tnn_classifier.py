@@ -115,7 +115,16 @@ class tnn_classifier():
 
 
     def sweep(self,data,lvector):
-        pass
+
+        s=50
+        while s>0:
+            for i in range(self.Nlayer):
+                for j in range(len(self.W[i])):
+                    for k in range(len(self.W[i][j])):
+                        self.update(i,j,k,data,lvector)
+            s-=1
+
+    
 
 
 
