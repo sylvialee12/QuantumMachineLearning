@@ -131,9 +131,15 @@ class tnn_classifier():
         return output
 
 
-
     def environment(self,nlayer,mx,my,data):
+        """
 
+        :param nlayer:
+        :param mx:
+        :param my:
+        :param data:
+        :return:
+        """
         mpo=data
         for i in range(self.Nlayer):
             mpo_i=[]
@@ -151,6 +157,29 @@ class tnn_classifier():
         return mpo[0][0]
 
 
+    def updateWithSVD(self,nlayer,mx,my,data,lvector):
+
+        f=0
+        for data_n,l_n in zip(data,lvector):
+            gamma_n=self.environment(nlayer,mx,my,data_n)
+            if nlayer<self.Nlayer-2:
+                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
+                f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
+            elif nlayer==self.Nlayer-2:
+                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[0,2,3,4,5]))
+                f+=tensordot(ln2-l_n,gamma_n,axes=(0,1))
+            else:
+                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([0,1,2,3],[0,1,2,3]))
+                f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
+        if nlayer<self.Nlayer-1:
+            f=f.transpose(1,2,3,4,0)
+        fshape=f.shape
+        gamma1=np.reshape(f,[np.prod(fshape[0:-1]),fshape[-1]])
+        dmin=min(gamma1.shape)
+        u,s,v=np.linalg.svd(gamma1)
+        tem=-np.dot(np.conj(transpose(v)),np.conj(transpose(u))[0:dmin,:])
+        tem=transpose(tem)
+        self.W[nlayer][mx][my]=tem.reshape(fshape)
 
 
     def update(self,nlayer,mx,my,data,lvector):
@@ -169,28 +198,21 @@ class tnn_classifier():
                 f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
         if nlayer<self.Nlayer-1:
             f=f.transpose(1,2,3,4,0)
-        self.W[nlayer][mx][my]+=f
-        shape=self.W[nlayer][mx][my].shape
-        tem=self.W[nlayer][mx][my].reshape(np.prod(shape[:-1]),shape[-1])
-        Q,R=np.linalg.qr(tem)
-        self.W[nlayer][mx][my]=Q.reshape(shape)
 
 
     def sweep(self,data,lvector):
 
-        s0,s=50,50
-        costevo=np.zeros(s+1)
+        s0,s=10,10
+        costevo=np.zeros(s)
         while s>0:
             for i in range(self.Nlayer):
                 print(i)
                 for j in range(len(self.W[i])):
-                    print(j)
                     for k in range(len(self.W[i][j])):
-                        print(k)
-                        self.update(i,j,k,data,lvector)
-            s-=1
+                        self.updateWithSVD(i,j,k,data,lvector)
+
             costevo[s0-s]=self.lostfunc(data,lvector)
-            print(self.testIsometry())
+            s-=1
         print(costevo)
 
 
@@ -203,15 +225,12 @@ class tnn_classifier():
         return lost
 
 
-
-
-
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    data,target=mnist.data_process2D(Mnist,2)
-    tnn=tnn_classifier(5,2,10)
+    data,target=mnist.data_process2D(Mnist,2,4)
+    tnn=tnn_classifier(9,2,10)
 
-    train_data,train_target=data[0:1],target[0:1]
+    train_data,train_target=data[0:200],target[0:200]
     test_data,test_target=data[500:700],target[500:700]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
