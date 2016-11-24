@@ -58,7 +58,7 @@ def data_process(mnist,n):
 
 
 @functimer
-def data_process2D(mnist,margin):
+def data_process2D(mnist,margin,pool):
     reshaped_tar=mnist.target.reshape([len(mnist.target),1])
     Data=np.concatenate((mnist.data, reshaped_tar), axis=1)
     shuffle(Data)
@@ -79,7 +79,18 @@ def data_process2D(mnist,margin):
     lvector=np.zeros([target.shape[0],10])
     for (i,l) in enumerate(lvector):
         l[int(target[i])]=1
-    return data,lvector
+    if pool==0 or pool==1:
+        return data,lvector
+    else:
+        u=np.kron(np.eye((pixel+2*margin)//pool),1/pool*np.ones([pool,1]))
+        psi3_pooled=np.tensordot(psi3,u,axes=(2,0))
+        psi3_pooled=np.tensordot(np.transpose(u),psi3_pooled,axes=(1,1))
+        psi3_pooled=np.transpose(psi3_pooled,[1,0,2])
+        psi1_pooled=np.cos(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
+        psi2_pooled=np.sin(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
+        data=np.concatenate((psi1_pooled,psi2_pooled),axis=-1)
+        return data,lvector
+
 
 if __name__=="__main__":
     print("yes")
