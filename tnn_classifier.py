@@ -83,15 +83,20 @@ class tnn_classifier():
 
         tem1=tensordot(leftup_tem,leftdn_tem,axes=(-1,-2))
         tem2=tensordot(rightup_tem, rightdn_tem,axes=(-1,-2))
-        tem=tensordot(tem1,tem2,axes=([-1,-3],[-1,-3]))
         if up_tensor is None:
+            tem=tensordot(tem1,tem2,axes=([-1,-3],[-1,-3]))
             output=tem
         elif lst.count(lst[0])==len(lst):
+            tem=tensordot(tem1,tem2,axes=([-1,-3],[-1,-3]))
             output=tensordot(up_tensor,tem,axes=([0,1,2,3],[0,1,2,3]))
         else:
             lst=np.array(lst)
             idx=np.argmax(lst)
             maxlegs=max(lst)
+            if idx<2:
+                tem=tensordot(tem1,tem2,axes=([-1,-3-(maxlegs-1)*idx],[-1,-3]))
+            else:
+                tem=tensordot(tem1,tem2,axes=([-1,-3],[-1,-3-(maxlegs-1)*(idx-2)]))
             if maxlegs==4:
                 upleg=list(range(0,4))
                 dnleg=list(range(3+maxlegs))
@@ -136,10 +141,10 @@ class tnn_classifier():
                 mpo_ij=[]
                 for k in range(len(self.W[i][j])):
                     if i!=nlayer or j!=mx or k!=my:
-                        output=self.contract_full(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j][2*k+1],self.W[i][j][k])
+                        output=self.contract_full(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1],self.W[i][j][k])
                         mpo_ij.append(output)
                     else:
-                        output=self.contract_full(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j][2*k+1],None)
+                        output=self.contract_full(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1],None)
                         mpo_ij.append(output)
                 mpo_i.append(mpo_ij)
             mpo=mpo_i
@@ -153,9 +158,12 @@ class tnn_classifier():
         f=0
         for data_n,l_n in zip(data,lvector):
             gamma_n=self.environment(nlayer,mx,my,data_n)
-            if nlayer!=self.Nlayer-1:
+            if nlayer<self.Nlayer-1:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
+            elif nlayer==self.Nlayer-2:
+                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[0,2,3,4,5]))
+                f+=tensordot(ln2-l_n,gamma_n,axes=(0,1))
             else:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([0,1,2,3],[0,1,2,3]))
                 f+=np.kron(gamma_n,ln2-l_n)
@@ -203,7 +211,7 @@ if __name__=="__main__":
     data,target=mnist.data_process2D(Mnist,2)
     tnn=tnn_classifier(5,2,10)
 
-    train_data,train_target=data[0:500],target[0:500]
+    train_data,train_target=data[0:20],target[0:20]
     test_data,test_target=data[500:700],target[500:700]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
