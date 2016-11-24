@@ -71,7 +71,12 @@ class tree_TN():
         return mpo_contracted
 
 
+
     def conjugatepart(self,mpo_contracted):
+        pass
+
+
+    def layerproduct(self):
         pass
 
     def environment(self,nlayer,m,mpo_contracted):
