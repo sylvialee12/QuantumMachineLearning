@@ -158,7 +158,7 @@ class tnn_classifier():
         f=0
         for data_n,l_n in zip(data,lvector):
             gamma_n=self.environment(nlayer,mx,my,data_n)
-            if nlayer<self.Nlayer-1:
+            if nlayer<self.Nlayer-2:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
             elif nlayer==self.Nlayer-2:
@@ -166,8 +166,9 @@ class tnn_classifier():
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,1))
             else:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([0,1,2,3],[0,1,2,3]))
-                f+=np.kron(gamma_n,ln2-l_n)
-        f=f.transpose(1,2,3,4,0)
+                f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
+        if nlayer<self.Nlayer-1:
+            f=f.transpose(1,2,3,4,0)
         self.W[nlayer][mx][my]+=f
         shape=self.W[nlayer][mx][my].shape
         tem=self.W[nlayer][mx][my].reshape(np.prod(shape[:-1]),shape[-1])
@@ -178,7 +179,7 @@ class tnn_classifier():
     def sweep(self,data,lvector):
 
         s0,s=50,50
-        costevo=np.zeros(s)
+        costevo=np.zeros(s+1)
         while s>0:
             for i in range(self.Nlayer):
                 print(i)
@@ -205,13 +206,12 @@ class tnn_classifier():
 
 
 
-
 if __name__=="__main__":
     Mnist=mnist.load_data()
     data,target=mnist.data_process2D(Mnist,2)
     tnn=tnn_classifier(5,2,10)
 
-    train_data,train_target=data[0:20],target[0:20]
+    train_data,train_target=data[0:1],target[0:1]
     test_data,test_target=data[500:700],target[500:700]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
