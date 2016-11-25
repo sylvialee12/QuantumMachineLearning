@@ -26,8 +26,8 @@ class tnn_classifier():
         W=[[] for i in range(self.Nlayer)]
         W[0]=[[random.rand(self.d,self.d,self.d,self.d,self.Dbond) for i in range(Ny//2)] for j in range(Nx//2) ]
         for i in range(1,self.Nlayer-1):
-            W[i]=[[random.rand(self.Dbond,self.Dbond,self.Dbond,self.Dbond,self.Dbond) for i in range(Ny//(2**(i+1)))] for j in range(Nx//(2**(i+1)))]
-        W[self.Nlayer-1]=[[random.rand(self.Dbond,self.Dbond,self.Dbond,self.Dbond,self.Dout)]]
+            W[i]=[[random.rand(i*self.Dbond,i*self.Dbond,i*self.Dbond,i*self.Dbond,(i+1)*self.Dbond) for l in range(Ny//(2**(i+1)))] for j in range(Nx//(2**(i+1)))]
+        W[self.Nlayer-1]=[[random.rand((self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,self.Dout)]]
         self.W=W
 
 
@@ -103,7 +103,8 @@ class tnn_classifier():
                 to_remove=list(range(idx,idx+maxlegs))
                 upleg_to_con=[x for x in upleg if x!=idx]
                 dnleg_to_con=[x for x in dnleg if x not in to_remove]
-                output=tensordot(up_tensor,tem,axes=(upleg_to_con,dnleg_to_con))
+                tem=tensordot(up_tensor,tem,axes=(upleg_to_con,dnleg_to_con))
+                output=tem.transpose(1,0,2,3,4,5)
             elif maxlegs==6:
                 upleg=list(range(0,4))
                 dnleg=list(range(3+maxlegs))
@@ -202,14 +203,16 @@ class tnn_classifier():
 
     def sweep(self,data,lvector):
 
-        s0,s=10,10
+        s0,s=1,1
         costevo=np.zeros(s)
         while s>0:
             for i in range(self.Nlayer):
                 print(i)
                 for j in range(len(self.W[i])):
+                    print(j)
                     for k in range(len(self.W[i][j])):
-                        self.updateWithSVD(i,j,k,data,lvector)
+                        # self.updateWithSVD(i,j,k,data,lvector)
+                        self.update(i,j,k,data,lvector)
 
             costevo[s0-s]=self.lostfunc(data,lvector)
             s-=1
@@ -221,16 +224,17 @@ class tnn_classifier():
         for data_n,l_n in zip(data,lvector):
             gamma=self.environment(self.Nlayer-1,0,0,data_n)
             ln2=tensordot(self.W[self.Nlayer-1][0][0],gamma,axes=([0,1,2,3],[0,1,2,3]))
+            print(ln2)
             lost+=sum((ln2-l_n)**2)
         return lost
 
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    data,target=mnist.data_process2D(Mnist,2,4)
-    tnn=tnn_classifier(9,2,10)
+    data,target=mnist.data_process2D(Mnist,2,0)
+    tnn=tnn_classifier(6,2,10)
 
-    train_data,train_target=data[0:200],target[0:200]
+    train_data,train_target=data[0:20],target[0:20]
     test_data,test_target=data[500:700],target[500:700]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
