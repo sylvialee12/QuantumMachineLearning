@@ -4,6 +4,7 @@ import mnist
 from numpy import random
 from numpy import tensordot
 from numpy import transpose
+import matplotlib.pyplot as plt
 
 class tnn_classifier():
     """
@@ -14,7 +15,7 @@ class tnn_classifier():
         self.d=d
         self.Dout=Dout
 
-    def initialize(self,Nx,Ny):
+    def initialize2(self,Nx,Ny):
         """
 
         :param Nx:
@@ -29,6 +30,23 @@ class tnn_classifier():
             W[i]=[[random.rand(i*self.Dbond,i*self.Dbond,i*self.Dbond,i*self.Dbond,(i+1)*self.Dbond) for l in range(Ny//(2**(i+1)))] for j in range(Nx//(2**(i+1)))]
         W[self.Nlayer-1]=[[random.rand((self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,(self.Nlayer-1)*self.Dbond,self.Dout)]]
         self.W=W
+
+    def initialize(self,Nx,Ny):
+        """
+
+        :param Nx:
+        :param Ny:
+        :return:
+        """
+
+        self.Nlayer=np.log2(Nx).astype('int')
+        W=[[] for i in range(self.Nlayer)]
+        W[0]=[[random.rand(self.d,self.d,self.d,self.d,self.Dbond) for i in range(Ny//2)] for j in range(Nx//2) ]
+        for i in range(1,self.Nlayer-1):
+            W[i]=[[random.rand(self.Dbond,self.Dbond,self.Dbond,self.Dbond,self.Dbond) for l in range(Ny//(2**(i+1)))] for j in range(Nx//(2**(i+1)))]
+        W[self.Nlayer-1]=[[random.rand(self.Dbond,self.Dbond,self.Dbond,self.Dbond,self.Dout)]]
+        self.W=W
+
 
 
     def isometrize(self):
@@ -163,12 +181,9 @@ class tnn_classifier():
         f=0
         for data_n,l_n in zip(data,lvector):
             gamma_n=self.environment(nlayer,mx,my,data_n)
-            if nlayer<self.Nlayer-2:
+            if nlayer<self.Nlayer-1:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
-            elif nlayer==self.Nlayer-2:
-                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[0,2,3,4,5]))
-                f+=tensordot(ln2-l_n,gamma_n,axes=(0,1))
             else:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([0,1,2,3],[0,1,2,3]))
                 f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
@@ -188,12 +203,9 @@ class tnn_classifier():
         f=0
         for data_n,l_n in zip(data,lvector):
             gamma_n=self.environment(nlayer,mx,my,data_n)
-            if nlayer<self.Nlayer-2:
+            if nlayer<self.Nlayer-1:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
-            elif nlayer==self.Nlayer-2:
-                ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[0,2,3,4,5]))
-                f+=tensordot(ln2-l_n,gamma_n,axes=(0,1))
             else:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([0,1,2,3],[0,1,2,3]))
                 f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
@@ -201,44 +213,71 @@ class tnn_classifier():
             f=f.transpose(1,2,3,4,0)
 
 
-    def sweep(self,data,lvector):
-
-        s0,s=1,1
-        costevo=np.zeros(s)
+    def sweep(self,data,lvector,testdata,testlvector):
+        s0,s=3,3
+        trainlost=[]
+        testlost=[]
+        trainprecision=[]
+        testprecision=[]
         while s>0:
             for i in range(self.Nlayer):
                 print(i)
                 for j in range(len(self.W[i])):
-                    print(j)
                     for k in range(len(self.W[i][j])):
-                        # self.updateWithSVD(i,j,k,data,lvector)
-                        self.update(i,j,k,data,lvector)
-
-            costevo[s0-s]=self.lostfunc(data,lvector)
+                        self.updateWithSVD(i,j,k,data,lvector)
+                        # self.update(i,j,k,data,lvector)
+                    trainlost_i,trainprecision_i=self.test(data,lvector)
+                    testlost_i,testprecision_i=self.test(testdata,testlvector)
+                    trainlost.append(trainlost_i)
+                    testlost.append(testlost_i)
+                    trainprecision.append(trainprecision_i)
+                    testprecision.append(testprecision_i)
             s-=1
-        print(costevo)
+        return trainlost,testlost,trainprecision,testprecision
+
+
+
+    def test(self,testdata,testlvector):
+        test_result=[np.argmax(l) for l in testlvector]
+        lost,result=self.lostfunc(testdata,testlvector)
+        pricision=np.sum(np.array(test_result)==np.array(result))/len(testlvector)
+        return lost,pricision
+
+
 
 
     def lostfunc(self,data,lvector):
         lost=0
+        result=[]
         for data_n,l_n in zip(data,lvector):
             gamma=self.environment(self.Nlayer-1,0,0,data_n)
             ln2=tensordot(self.W[self.Nlayer-1][0][0],gamma,axes=([0,1,2,3],[0,1,2,3]))
-            print(ln2)
             lost+=sum((ln2-l_n)**2)
-        return lost
+            result.append(np.argmax(ln2))
+
+        return lost,result
 
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    data,target=mnist.data_process2D(Mnist,2,0)
-    tnn=tnn_classifier(6,2,10)
+    data,target=mnist.data_process2D(Mnist,2,4)
+    tnn=tnn_classifier(4,2,10)
 
-    train_data,train_target=data[0:20],target[0:20]
-    test_data,test_target=data[500:700],target[500:700]
+    train_data,train_target=data[0:200],target[0:200]
+    test_data,test_target=data[500:600],target[500:600]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
-    tnn.sweep(train_data,train_target)
+    trainlost,testlost,trainprecision,testprecision=tnn.sweep(train_data,train_target,test_data,test_target)
+    plt.figure("Precision")
+    plt.plot(trainprecision)
+    plt.plot(testprecision)
+    plt.savefig("TTN/Precision.png")
+    plt.figure("Lost")
+    plt.plot(trainlost)
+    plt.plot(testlost)
+    plt.savefig("TTN/Lost.png")
+
+
 
 
 
