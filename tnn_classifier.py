@@ -226,12 +226,12 @@ class tnn_classifier():
                     for k in range(len(self.W[i][j])):
                         self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
-                    trainlost_i,trainprecision_i=self.test(data,lvector)
-                    testlost_i,testprecision_i=self.test(testdata,testlvector)
-                    trainlost.append(trainlost_i)
-                    testlost.append(testlost_i)
-                    trainprecision.append(trainprecision_i)
-                    testprecision.append(testprecision_i)
+                        trainlost_i,trainprecision_i=self.test(data,lvector)
+                        testlost_i,testprecision_i=self.test(testdata,testlvector)
+                        trainlost.append(trainlost_i)
+                        testlost.append(testlost_i)
+                        trainprecision.append(trainprecision_i)
+                        testprecision.append(testprecision_i)
             s-=1
         return trainlost,testlost,trainprecision,testprecision
 
@@ -260,8 +260,10 @@ class tnn_classifier():
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    data,target=mnist.data_process2D(Mnist,2,4)
-    tnn=tnn_classifier(4,2,10)
+    margin,pool=2,2
+    data,target=mnist.data_process2D(Mnist,margin,pool)
+    Dbond,d,Dout=5,2,10
+    tnn=tnn_classifier(Dbond,d,Dout)
 
     train_data,train_target=data[0:200],target[0:200]
     test_data,test_target=data[500:600],target[500:600]
@@ -271,11 +273,11 @@ if __name__=="__main__":
     plt.figure("Precision")
     plt.plot(trainprecision)
     plt.plot(testprecision)
-    plt.savefig("TTN/Precision.png")
+    plt.savefig("TTN/PrecisionPool"+str(pool)+"Dbond"+str(Dbond)+".png")
     plt.figure("Lost")
     plt.plot(trainlost)
     plt.plot(testlost)
-    plt.savefig("TTN/Lost.png")
+    plt.savefig("TTN/LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
 
 
 
