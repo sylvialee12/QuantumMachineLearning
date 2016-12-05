@@ -192,10 +192,52 @@ class tnn_classifier():
         fshape=f.shape
         gamma1=np.reshape(f,[np.prod(fshape[0:-1]),fshape[-1]])
         dmin=min(gamma1.shape)
-        u,s,v=np.linalg.svd(gamma1)
+        try:
+            u,s,v=np.linalg.svd(gamma1)
+        except:
+            gamma1
         tem=-np.dot(np.conj(transpose(v)),np.conj(transpose(u))[0:dmin,:])
         tem=transpose(tem)
         self.W[nlayer][mx][my]=tem.reshape(fshape)
+
+
+    def updateWithLinearE(self,nlayer,mx,my,data,lvector):
+        H=0
+        B=0
+        for data_n,l_n in zip(data,lvector):
+            gamma_n=self.environment(nlayer,mx,my,data_n)
+            if nlayer<self.Nlayer-1:
+                gammashape=gamma_n.shape
+                gamma_n=np.transpose(gamma_n,[0,2,3,4,5,1])
+                gamma_tem=np.reshape(gamma_n,[gammashape[0],np.prod(gammashape[1:])])
+                H_n=np.dot(np.transpose(gamma_tem),gamma_tem)
+                B_n=np.dot(l_n,gamma_tem)
+                H+=H_n
+                B+=B_n
+            else:
+                gammashape=gamma_n.shape
+                gamma_tem=np.reshape(gamma_n,[1,np.prod(gammashape[0:])])
+                H_n=np.dot(np.transpose(gamma_tem),gamma_tem)
+                B_n=np.dot(np.reshape(l_n,l_n.shape+(1,)),gamma_tem)
+                H+=H_n
+                B+=B_n
+        try:
+            solution=B.dot(np.linalg.inv(H))
+        except:
+            solution=B.dot(np.linalg.inv(H+np.eye(H.shape[0])*10**(-16)))
+        if nlayer<self.Nlayer-1:
+            Wshape=self.W[nlayer][mx][my].shape
+            solution_tem=np.reshape(solution,Wshape)
+            self.W[nlayer][mx][my]=solution_tem
+        else:
+            Wshape=self.W[nlayer][mx][my].shape
+            solution_tem=np.reshape(solution,(Wshape[-1],)+Wshape[0:-1])
+            solution_tem=np.transpose(solution_tem,[1,2,3,4,0])
+            self.W[nlayer][mx][my]=solution_tem
+
+
+
+
 
 
     def update(self,nlayer,mx,my,data,lvector):
@@ -211,10 +253,15 @@ class tnn_classifier():
                 f+=np.kron(gamma_n,ln2-l_n).reshape(self.W[nlayer][mx][my].shape)
         if nlayer<self.Nlayer-1:
             f=f.transpose(1,2,3,4,0)
+        fshape=f.shape
+        ftem=f.reshape(np.prod(fshape[0:-1]),fshape[-1])
+        Q,R=np.linalg.qr(ftem)
+        deltaW=np.reshape(Q,fshape)
+        self.W[nlayer][mx][my]-=deltaW
 
 
     def sweep(self,data,lvector,testdata,testlvector):
-        s0,s=3,3
+        s=1
         trainlost=[]
         testlost=[]
         trainprecision=[]
@@ -224,8 +271,22 @@ class tnn_classifier():
                 print(i)
                 for j in range(len(self.W[i])):
                     for k in range(len(self.W[i][j])):
-                        self.updateWithSVD(i,j,k,data,lvector)
+                        # self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
+                        self.updateWithLinearE(i,j,k,data,lvector)
+                        trainlost_i,trainprecision_i=self.test(data,lvector)
+                        testlost_i,testprecision_i=self.test(testdata,testlvector)
+                        trainlost.append(trainlost_i)
+                        testlost.append(testlost_i)
+                        trainprecision.append(trainprecision_i)
+                        testprecision.append(testprecision_i)
+            for i in range(self.Nlayer-1,-1,-1):
+                print(i)
+                for j in range(len(self.W[i])-1,-1,-1):
+                    for k in range(len(self.W[i][j])-1,-1,-1):
+                        # self.updateWithSVD(i,j,k,data,lvector)
+                        # self.update(i,j,k,data,lvector)
+                        self.updateWithLinearE(i,j,k,data,lvector)
                         trainlost_i,trainprecision_i=self.test(data,lvector)
                         testlost_i,testprecision_i=self.test(testdata,testlvector)
                         trainlost.append(trainlost_i)
@@ -245,14 +306,14 @@ class tnn_classifier():
 
 
 
-
     def lostfunc(self,data,lvector):
         lost=0
         result=[]
+        Nnum=len(lvector)
         for data_n,l_n in zip(data,lvector):
             gamma=self.environment(self.Nlayer-1,0,0,data_n)
             ln2=tensordot(self.W[self.Nlayer-1][0][0],gamma,axes=([0,1,2,3],[0,1,2,3]))
-            lost+=sum((ln2-l_n)**2)
+            lost+=sum((ln2-l_n)**2)/Nnum
             result.append(np.argmax(ln2))
 
         return lost,result
@@ -260,11 +321,10 @@ class tnn_classifier():
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    margin,pool=2,2
+    margin,pool=2,4
     data,target=mnist.data_process2D(Mnist,margin,pool)
-    Dbond,d,Dout=5,2,10
+    Dbond,d,Dout=10,2,10
     tnn=tnn_classifier(Dbond,d,Dout)
-
     train_data,train_target=data[0:200],target[0:200]
     test_data,test_target=data[500:600],target[500:600]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
