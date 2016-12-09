@@ -4,6 +4,7 @@ import mnist
 from numpy import random
 from numpy import tensordot
 from numpy import transpose
+from scipy.sparse.linalg import spsolve
 import matplotlib.pyplot as plt
 
 class tnn_classifier():
@@ -224,16 +225,16 @@ class tnn_classifier():
         try:
             solution=B.dot(np.linalg.inv(H))
         except:
-            solution=B.dot(np.linalg.inv(H+np.eye(H.shape[0])*10**(-16)))
+            solution=B.dot(np.linalg.inv(H+np.eye(H.shape[0])*10**(-7)))
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
-            solution_tem=np.reshape(solution,Wshape)
-            self.W[nlayer][mx][my]=solution_tem
+            self.W[nlayer][mx][my]=np.reshape(solution,Wshape)
         else:
             Wshape=self.W[nlayer][mx][my].shape
             solution_tem=np.reshape(solution,(Wshape[-1],)+Wshape[0:-1])
             solution_tem=np.transpose(solution_tem,[1,2,3,4,0])
-            self.W[nlayer][mx][my]=solution_tem
+            self.W[nlayer][mx][my]=np.reshape(solution_tem,Wshape)
+
 
 
 
@@ -261,7 +262,7 @@ class tnn_classifier():
 
 
     def sweep(self,data,lvector,testdata,testlvector):
-        s=1
+        s=3
         trainlost=[]
         testlost=[]
         trainprecision=[]
@@ -271,28 +272,32 @@ class tnn_classifier():
                 print(i)
                 for j in range(len(self.W[i])):
                     for k in range(len(self.W[i][j])):
+
                         # self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
                         self.updateWithLinearE(i,j,k,data,lvector)
                         trainlost_i,trainprecision_i=self.test(data,lvector)
-                        testlost_i,testprecision_i=self.test(testdata,testlvector)
+                        # testlost_i,testprecision_i=self.test(testdata,testlvector)
                         trainlost.append(trainlost_i)
-                        testlost.append(testlost_i)
+                        # testlost.append(testlost_i)
                         trainprecision.append(trainprecision_i)
-                        testprecision.append(testprecision_i)
+                        # testprecision.append(testprecision_i)
+
+            """
             for i in range(self.Nlayer-1,-1,-1):
                 print(i)
                 for j in range(len(self.W[i])-1,-1,-1):
                     for k in range(len(self.W[i][j])-1,-1,-1):
-                        # self.updateWithSVD(i,j,k,data,lvector)
+                        self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
-                        self.updateWithLinearE(i,j,k,data,lvector)
+                        # self.updateWithLinearE(i,j,k,data,lvector)
                         trainlost_i,trainprecision_i=self.test(data,lvector)
                         testlost_i,testprecision_i=self.test(testdata,testlvector)
                         trainlost.append(trainlost_i)
                         testlost.append(testlost_i)
                         trainprecision.append(trainprecision_i)
                         testprecision.append(testprecision_i)
+            """
             s-=1
         return trainlost,testlost,trainprecision,testprecision
 
@@ -321,12 +326,12 @@ class tnn_classifier():
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
-    margin,pool=2,4
+    margin,pool=2,8
     data,target=mnist.data_process2D(Mnist,margin,pool)
-    Dbond,d,Dout=10,2,10
+    Dbond,d,Dout=8,2,10
     tnn=tnn_classifier(Dbond,d,Dout)
-    train_data,train_target=data[0:200],target[0:200]
-    test_data,test_target=data[500:600],target[500:600]
+    train_data,train_target=data[0:2000],target[0:2000]
+    test_data,test_target=data[5000:6000],target[5000:6000]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
     trainlost,testlost,trainprecision,testprecision=tnn.sweep(train_data,train_target,test_data,test_target)
