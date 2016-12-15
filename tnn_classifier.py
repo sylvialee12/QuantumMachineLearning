@@ -9,6 +9,7 @@ import scipy.sparse as ssp
 import matplotlib.pyplot as plt
 from time import time
 from multiprocessing.pool import Pool
+import pickle
 
 def functimer(func):
     def wrapper(*args,**kwargs):
@@ -161,6 +162,53 @@ class tnn_classifier():
         output=tensordot(tem,np.conj(dn_tensor),axes=([1,2,3,4],[0,1,2,3]))
         return output
 
+    @staticmethod
+    def contract_conj3(leftup_tensor,leftdn_tensor,rightup_tensor,rightdn_tensor,up_tensor):
+        """
+
+        :param leftup_tensor:
+        :param leftdn_tensor:
+        :param rightup_tensor:
+        :param rightdn_tensor:
+        :param up_tensor:
+        :return:
+        """
+        lst1=[leftup_tensor,leftdn_tensor,rightup_tensor,rightdn_tensor]
+        if "cone" in lst1:
+            idx=lst1.index("cone")
+            to_contract=[x for x in range(4) if x!=idx]
+            lst2=[x for x in lst1 if x!="cone"]
+            tem=up_tensor
+            for i in range(3):
+                tem1=tensordot(tem,lst2[i],axes=(to_contract[i],0))
+                axeorder=list(range(to_contract[i]))+[4]+list(range(to_contract[i],4))
+                tem=transpose(tem1,axeorder)
+            output_tem=tensordot(tem,np.conj(up_tensor),axes=(to_contract,to_contract))
+            output=transpose(output_tem,[0,3,1,2])
+        else:
+            numlst=[len(x.shape) for x in lst1]
+            if numlst.count(numlst[0])==len(numlst):
+                tem=up_tensor
+                for i in range(4):
+                    tem1=tensordot(tem,lst1[i],axes=(i,0))
+                    axeorder=list(range(i))+[4]+list(range(i,4))
+                    tem=transpose(tem1,axeorder)
+                output_tem=tensordot(tem,np.conj(up_tensor),axes=([0,1,2,3],[0,1,2,3]))
+                output=output_tem
+            else:
+                idx=np.argmax(np.array(numlst))
+                contractfirst=[x for x in range(4) if x!=idx]
+                tem=up_tensor
+                for i in range(3):
+                    tem1=tensordot(tem,lst1[contractfirst[i]],axes=(contractfirst[i],0))
+                    axeorder=list(range(contractfirst[i]))+[4]+list(range(contractfirst[i],4))
+                    tem=transpose(tem1,axeorder)
+                tem=tensordot(tem,np.conj(up_tensor),axes=(contractfirst,contractfirst))
+                tem=transpose(tem,[1,3,0,2])
+                output=tensordot(tem,lst1[idx],axes=([2,3],[0,1]))
+        return output
+
+
     def environment(self,nlayer,mx,my,data):
         """
 
@@ -185,6 +233,47 @@ class tnn_classifier():
                 mpo_i.append(mpo_ij)
             mpo=mpo_i
         return mpo[0][0]
+
+
+    def environmentL2(self,nlayer,mx,my):
+        """
+
+        :param nlayer:
+        :param mx:
+        :param my:
+        :return:
+        """
+        mpo=[[np.eye(2) for i in range(2**self.Nlayer)] for j in range(2**self.Nlayer)]
+        for i in range(self.Nlayer):
+            mpo_i=[]
+            for j in range(len(self.W[i])):
+                mpo_ij=[]
+                for k in range(len(self.W[i][j])):
+                    if i!=nlayer or j!=mx or k!=my:
+                        output=self.contract_conj3(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1],self.W[i][j][k])
+                        mpo_ij.append(output)
+                    else:
+                        coneinside=[mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1]]
+                        mpo_ij.append("cone")
+                mpo_i.append(mpo_ij)
+            mpo=mpo_i
+        if nlayer!=self.Nlayer-1:
+            coneoutside=np.trace(mpo[0][0])
+            tem=coneoutside
+            for cone_i in coneinside:
+                cone_tem=cone_i.reshape(cone_i.shape+(1,))
+                tem=tem.reshape(tem.shape+(1,))
+                tem=tensordot(tem,cone_tem,axes=(-1,-1))
+            output=transpose(tem,[0,2,4,6,8,1,3,5,7,9])
+        else:
+            tem=np.array(1)
+            for cone_i in coneinside:
+                cone_tem=cone_i.reshape(cone_i.shape+(1,))
+                tem=tem.reshape(tem.shape+(1,))
+                tem=tensordot(tem,cone_tem,axes=(-1,-1))
+            output=transpose(tem,[0,2,4,6,1,3,5,7])
+        return output
+
 
     @functimer
     def updateWithSVD(self,nlayer,mx,my,data,lvector):
@@ -286,7 +375,8 @@ class tnn_classifier():
             H=gamma_tem.dot(transpose(gamma_tem))
             B=gamma_tem.dot(lvector)
 
-        H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-10)
+
+        H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8)
         B=ssp.csc_matrix(B)
         solution=spsolve(H,B)
 
@@ -300,6 +390,48 @@ class tnn_classifier():
 
 
 
+    def updateWithLinearEWithL2(self,nlayer,mx,my,data,lvector,lamb):
+        """
+        :param nlayer:
+        :param mx:
+        :param my:
+        :param data:
+        :param lvector:
+        :return:
+        """
+        t0=time()
+        environment=self.environment
+        gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
+        print(time()-t0)
+        gamma1=self.environmentL2(nlayer,mx,my)
+        if nlayer<self.Nlayer-1:
+            gamma=np.transpose(gamma,[3,4,5,6,2,1,0])
+            gamma_tem=np.reshape(gamma,[np.prod(gamma.shape[0:-2]),gamma.shape[-2],gamma.shape[-1]])
+            H=tensordot(gamma_tem,gamma_tem,axes=([1,2],[1,2]))
+            B=tensordot(gamma_tem,lvector,axes=([1,2],[1,0]))
+            B=B.reshape(B.shape[0],1)
+            H1=lamb*gamma1.reshape([np.prod(gamma1.shape[0:5]),np.prod(gamma1.shape[5:10])])
+
+        else:
+            gamma_tem=np.reshape(gamma,[np.prod(gamma.shape[1:]),gamma.shape[0]])
+            H=gamma_tem.dot(transpose(gamma_tem))
+            B=gamma_tem.dot(lvector)
+            H1=lamb*gamma1.reshape([np.prod(gamma1.shape[0:4]),np.prod(gamma1.shape[4:8])])
+
+
+
+
+        H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8+H1)
+        B=ssp.csc_matrix(B)
+        solution=spsolve(H,B)
+
+        if nlayer<self.Nlayer-1:
+            Wshape=self.W[nlayer][mx][my].shape
+            self.W[nlayer][mx][my]=np.reshape(solution,Wshape)
+        else:
+            Wshape=self.W[nlayer][mx][my].shape
+            solution_tem=np.reshape(solution.toarray(),Wshape)
+            self.W[nlayer][mx][my]=solution_tem
 
 
 
@@ -329,7 +461,7 @@ class tnn_classifier():
         self.W[nlayer][mx][my]-=deltaW
 
 
-    def sweep(self,data,lvector,testdata,testlvector):
+    def sweep(self,data,lvector,testdata,testlvector,lamb):
         s=2
         trainlost=[]
         testlost=[]
@@ -343,22 +475,29 @@ class tnn_classifier():
 
                         # self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
-                        self.updateWithLinearE(i,j,k,data,lvector)
-                        trainlost_i,trainprecision_i=self.test(data,lvector)
-                        testlost_i,testprecision_i=self.test(testdata,testlvector)
+                        if i==self.Nlayer-1:
+                            self.updateWithLinearE2(i,j,k,data,lvector)
+                        else:
+                            self.updateWithLinearEWithL2(i,j,k,data,lvector,lamb)
+                        trainlost_i,trainprecision_i=self.test(data,lvector,lamb)
+                        testlost_i,testprecision_i=self.test(testdata,testlvector,lamb)
                         trainlost.append(trainlost_i)
                         testlost.append(testlost_i)
                         trainprecision.append(trainprecision_i)
                         testprecision.append(testprecision_i)
 
             s-=1
+        with open("trainlost.txt","wb") as f:
+            pickle.dump(trainlost,f)
+        with open("trainpreci.txt","wb") as f2:
+            pickle.dump(trainprecision,f2)
         return trainlost,testlost,trainprecision,testprecision
 
 
     @functimer
-    def test(self,testdata,testlvector):
+    def test(self,testdata,testlvector,lamb):
         test_result=testlvector.argmax(axis=1)
-        lost,result=self.lostfunc2(testdata,testlvector)
+        lost,result=self.lossWithL2(testdata,testlvector,lamb)
         pricision=np.sum(test_result==result)/len(testlvector)
         return lost,pricision
 
@@ -386,32 +525,44 @@ class tnn_classifier():
         result=ln2.argmax(axis=1)
         return lost,result
 
+
+    def lossWithL2(self,data,lvector,lamb):
+        Nnum=len(lvector)
+        environment=self.environment
+        gamma=np.array([environment(self.Nlayer-1,0,0,datan) for datan in data])
+        ln2=tensordot(gamma,self.W[self.Nlayer-1][0][0],axes=([1,2,3,4],[0,1,2,3]))
+        lost=np.sum((ln2-lvector)**2)/Nnum+lamb*np.sum(self.testIsometry())
+        result=ln2.argmax(axis=1)
+        return lost,result
+
+
     def savenetwork(self,filename):
         """
         :return:
         """
-        for idx,wi in enumerate(self.W):
-            for idxx,wx in enumerate(wi):
-                for idxy,wy in enumerate(wx):
-                    np.savetxt(filename,wy.reshape(np.prod(wy.shape[0:-1]),wy.shape[-1]),fmt="%.4e",delimiter=",",newline="\n",comments="w")
+        with open(filename,"wb") as f:
+            pickle.dump(self.W,f)
 
 
     def loadnetwork(self,filename):
-        with open(filename) as f:
-            pass
+        with open(filename,"rb") as f:
+            self.W=pickle.load(f)
+
 
 
 if __name__=="__main__":
     Mnist=mnist.load_data()
     margin,pool=2,4
-    data,target=mnist.data_process2D(Mnist,margin,pool)
-    Dbond,d,Dout=3,2,10
+    data,target=mnist.data_process2D(Mnist,margin,pool,"cosine")
+    Dbond,d,Dout=4,2,10
+    lamb=0.1
     tnn=tnn_classifier(Dbond,d,Dout)
-    train_data,train_target=data[0:200],target[0:200]
-    test_data,test_target=data[500:600],target[500:600]
+    trainend,testend=2000,2300
+    train_data,train_target=data[0:trainend],target[0:trainend]
+    test_data,test_target=data[trainend:testend],target[trainend:testend]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
     tnn.isometrize()
-    trainlost,testlost,trainprecision,testprecision=tnn.sweep(train_data,train_target,test_data,test_target)
+    trainlost,testlost,trainprecision,testprecision=tnn.sweep(train_data,train_target,test_data,test_target,lamb)
     tnn.savenetwork("WtrainedWithLinearE.txt")
     plt.figure("Precision")
     plt.plot(trainprecision)
@@ -421,13 +572,5 @@ if __name__=="__main__":
     plt.plot(trainlost)
     plt.plot(testlost)
     plt.savefig("TTN/LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
-
-
-
-
-
-
-
-
 
 
