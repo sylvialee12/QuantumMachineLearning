@@ -1,4 +1,5 @@
 __author__ = 'xlibb'
+import __future__
 import numpy as np
 import mnist
 from numpy import random
@@ -8,8 +9,11 @@ from scipy.sparse.linalg import spsolve
 import scipy.sparse as ssp
 import matplotlib.pyplot as plt
 from time import time
-from multiprocessing.pool import Pool
 import pickle
+import warnings
+
+
+
 
 def functimer(func):
     def wrapper(*args,**kwargs):
@@ -148,6 +152,50 @@ class tnn_classifier():
         return output
 
     @staticmethod
+    def contract_full2(leftup_tensor,leftdn_tensor,rightup_tensor,rightdn_tensor,up_tensor):
+        """
+
+        :param leftup_tensor:
+        :param leftdn_tensor:
+        :param rightup_tensor:
+        :param rightdn_tensor:
+        :param up_tensor:
+        :return:
+        """
+
+        lst1=[leftup_tensor,leftdn_tensor,rightup_tensor,rightdn_tensor]
+        if "cone" in lst1:
+            idx=lst1.index("cone")
+            to_contract=[x for x in range(4) if x!=idx]
+            lst2=[x.reshape(x.shape+(1,)) for x in lst1 if x!="cone"]
+            tem=up_tensor
+            for i in range(3):
+                tem1=tensordot(tem,lst2[i],axes=(to_contract[i],0))
+                axeorder=list(range(to_contract[i]))+[4]+list(range(to_contract[i],4))
+                tem=transpose(tem1,axeorder)
+            output=tem.squeeze().transpose()
+        else:
+            numlst=[len(x.shape) for x in lst1]
+            if numlst.count(numlst[0])==len(numlst):
+                tem=up_tensor
+                for i in range(4):
+                    tem1=tensordot(tem,lst1[i].reshape(lst1[i].shape+(1,)),axes=(i,0))
+                    axeorder=list(range(i))+[4]+list(range(i,4))
+                    tem=transpose(tem1,axeorder)
+                output=tem.squeeze()
+            else:
+                idx=np.argmax(np.array(numlst))
+                contractfirst=[x for x in range(4) if x!=idx]
+                tem=up_tensor
+                for i in range(3):
+                    inx=contractfirst[i]
+                    tem1=tensordot(tem,lst1[inx].reshape(lst1[inx].shape+(1,)),axes=(inx,0))
+                    axeorder=list(range(inx))+[4]+list(range(inx,4))
+                    tem=transpose(tem1,axeorder)
+                output=tensordot(tem,lst1[idx],axes=(idx,0))
+        return output.squeeze()
+
+    @staticmethod
     def contract_conj(leftup_tensor,leftdn_tensor,rightup_tensor,rightdn_tensor,up_tensor,dn_tensor):
 
         leftup_tem=leftup_tensor.reshape(leftup_tensor.shape+(1,1))
@@ -184,7 +232,7 @@ class tnn_classifier():
                 axeorder=list(range(to_contract[i]))+[4]+list(range(to_contract[i],4))
                 tem=transpose(tem1,axeorder)
             output_tem=tensordot(tem,np.conj(up_tensor),axes=(to_contract,to_contract))
-            output=transpose(output_tem,[0,3,1,2])
+            output=transpose(output_tem,[1,3,0,2])
         else:
             numlst=[len(x.shape) for x in lst1]
             if numlst.count(numlst[0])==len(numlst):
@@ -233,6 +281,52 @@ class tnn_classifier():
                 mpo_i.append(mpo_ij)
             mpo=mpo_i
         return mpo[0][0]
+
+
+
+
+
+    def environment2(self,nlayer,mx,my,data):
+        """
+
+        :param nlayer:
+        :param mx:
+        :param my:
+        :param data:
+        :return:
+        """
+        mpo=data
+        for i in range(self.Nlayer):
+            mpo_i=[]
+            for j in range(len(self.W[i])):
+                mpo_ij=[]
+                for k in range(len(self.W[i][j])):
+                    if i!=nlayer or j!=mx or k!=my:
+                        output=self.contract_full2(mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1],self.W[i][j][k])
+                        mpo_ij.append(output)
+                    else:
+                        coneinside=[mpo[2*j][2*k],mpo[2*j+1][2*k],mpo[2*j][2*k+1],mpo[2*j+1][2*k+1]]
+                        mpo_ij.append("cone")
+                mpo_i.append(mpo_ij)
+            mpo=mpo_i
+
+        coneoutside=mpo[0][0]
+        if nlayer!=self.Nlayer-1:
+            tem=coneoutside
+            for cone_i in coneinside:
+                cone_tem=cone_i.reshape(cone_i.shape+(1,))
+                tem=tem.reshape(tem.shape+(1,))
+                tem=tensordot(tem,cone_tem,axes=(-1,-1))
+            output=tem.squeeze()
+        else:
+            tem=np.array(1)
+            for cone_i in coneinside:
+                cone_tem=cone_i.reshape(cone_i.shape+(1,))
+                tem=tem.reshape(tem.shape+(1,))
+                tem=tensordot(tem,cone_tem,axes=(-1,-1))
+            output=tem.squeeze()
+        return output
+
 
 
     def environmentL2(self,nlayer,mx,my):
@@ -316,7 +410,7 @@ class tnn_classifier():
         B=0
         t0=time()
         for data_n,l_n in zip(data,lvector):
-            gamma_n=self.environment(nlayer,mx,my,data_n)
+            gamma_n=self.environment2(nlayer,mx,my,data_n)
             if nlayer<self.Nlayer-1:
                 gammashape=gamma_n.shape
                 gamma_n=np.transpose(gamma_n,[0,2,3,4,5,1])
@@ -362,6 +456,7 @@ class tnn_classifier():
         """
         t0=time()
         environment=self.environment
+
         gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
         print(time()-t0)
         if nlayer<self.Nlayer-1:
@@ -400,10 +495,14 @@ class tnn_classifier():
         :return:
         """
         t0=time()
-        environment=self.environment
-        gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
+        environment=self.environment2
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
         print(time()-t0)
-        gamma1=self.environmentL2(nlayer,mx,my)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gamma1=self.environmentL2(nlayer,mx,my)
         if nlayer<self.Nlayer-1:
             gamma=np.transpose(gamma,[3,4,5,6,2,1,0])
             gamma_tem=np.reshape(gamma,[np.prod(gamma.shape[0:-2]),gamma.shape[-2],gamma.shape[-1]])
@@ -418,10 +517,7 @@ class tnn_classifier():
             B=gamma_tem.dot(lvector)
             H1=lamb*gamma1.reshape([np.prod(gamma1.shape[0:4]),np.prod(gamma1.shape[4:8])])
 
-
-
-
-        H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8+H1)
+        H=ssp.csc_matrix(H+H1+np.eye(H.shape[0])*1e-8)
         B=ssp.csc_matrix(B)
         solution=spsolve(H,B)
 
@@ -462,7 +558,7 @@ class tnn_classifier():
 
 
     def sweep(self,data,lvector,testdata,testlvector,lamb):
-        s=2
+        s=3
         trainlost=[]
         testlost=[]
         trainprecision=[]
@@ -475,10 +571,10 @@ class tnn_classifier():
 
                         # self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
-                        if i==self.Nlayer-1:
-                            self.updateWithLinearE2(i,j,k,data,lvector)
-                        else:
+                        if i!=self.Nlayer-1:
                             self.updateWithLinearEWithL2(i,j,k,data,lvector,lamb)
+                        else:
+                            self.updateWithLinearE2(i,j,k,data,lvector)
                         trainlost_i,trainprecision_i=self.test(data,lvector,lamb)
                         testlost_i,testprecision_i=self.test(testdata,testlvector,lamb)
                         trainlost.append(trainlost_i)
@@ -554,10 +650,10 @@ if __name__=="__main__":
     Mnist=mnist.load_data()
     margin,pool=2,4
     data,target=mnist.data_process2D(Mnist,margin,pool,"cosine")
-    Dbond,d,Dout=4,2,10
-    lamb=0.1
+    Dbond,d,Dout=5,2,10
+    lamb=0
     tnn=tnn_classifier(Dbond,d,Dout)
-    trainend,testend=2000,2300
+    trainend,testend=8000,9000
     train_data,train_target=data[0:trainend],target[0:trainend]
     test_data,test_target=data[trainend:testend],target[trainend:testend]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
