@@ -91,6 +91,44 @@ def data_process2D(mnist,margin,pool):
         data=np.concatenate((psi1_pooled,psi2_pooled),axis=-1)
         return data,lvector
 
+def data_process2DwithSVD(mnist,margin,pool):
+    reshaped_tar=mnist.target.reshape([len(mnist.target),1])
+    Data=np.concatenate((mnist.data, reshaped_tar), axis=1)
+    shuffle(Data)
+    data0=Data[:,0:mnist.data.shape[1]]
+    target=Data[:,-1]
+
+    psi0=data0/255.0
+
+    pixel=int(np.sqrt(data0.shape[1]))
+    psi3=psi0.reshape([data0.shape[0],pixel,pixel])
+    margincol=np.zeros([data0.shape[0],pixel,margin])
+    psi3=np.concatenate((margincol,psi3,margincol),axis=2)
+    marginrow=np.zeros([data0.shape[0],margin,psi3.shape[2]])
+    psi3=np.concatenate((marginrow,psi3,marginrow),axis=1)
+    lvector=np.zeros([target.shape[0],10])
+    for (i,l) in enumerate(lvector):
+        l[int(target[i])]=1
+
+    u,s,v=np.linalg.svd(psi3)
+    if pool is None or pool==0 or pool==1:
+        compressed_pixel=(pixel+2*margin)//1
+    else:
+        compressed_pixel=(pixel+2*margin)//pool
+    psi_pooled=np.zeros([data0.shape[0],compressed_pixel,compressed_pixel])
+    for idx,psi3_i in enumerate(psi3):
+        psi_pooled[idx,:,:]=np.dot(u[idx,:compressed_pixel,:compressed_pixel],np.dot(np.diag(s[idx,:compressed_pixel]),v[idx,:compressed_pixel,:compressed_pixel]))
+    psi1_pooled=np.cos(np.pi/2*psi_pooled).reshape(psi_pooled.shape+(1,))
+    psi2_pooled=np.sin(np.pi/2*psi_pooled).reshape(psi_pooled.shape+(1,))
+    data=np.concatenate((psi1_pooled,psi2_pooled),axis=-1)
+    return data,lvector
+
+
+
+
+
+
+
 
 if __name__=="__main__":
     print("yes")
