@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from time import time
 from multiprocessing.pool import Pool
 import pickle
+import warnings
 
 def functimer(func):
     def wrapper(*args,**kwargs):
@@ -333,14 +334,16 @@ class tnn_classifier():
                 H+=H_n
                 B+=B_n
         print(time()-t0)
-        try:
-            H=ssp.csc_matrix(H)
-            B=ssp.csc_matrix(B)
-            solution=spsolve(H,B)
-        except:
-            H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8)
-            B=ssp.csc_matrix(B)
-            solution=spsolve(H,B.transpose())
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error")
+            try:
+                H=ssp.csc_matrix(H)
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B)
+            except:
+                H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8)
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B.transpose())
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
             self.W[nlayer][mx][my]=np.reshape(solution,Wshape)
@@ -400,8 +403,10 @@ class tnn_classifier():
         :return:
         """
         t0=time()
-        environment=self.environment
-        gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
+        environment=self.environment2
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
         print(time()-t0)
         gamma1=self.environmentL2(nlayer,mx,my)
         if nlayer<self.Nlayer-1:
@@ -417,13 +422,16 @@ class tnn_classifier():
             H=gamma_tem.dot(transpose(gamma_tem))
             B=gamma_tem.dot(lvector)
             H1=lamb*gamma1.reshape([np.prod(gamma1.shape[0:4]),np.prod(gamma1.shape[4:8])])
-
-
-
-
-        H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8+H1)
-        B=ssp.csc_matrix(B)
-        solution=spsolve(H,B)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error")
+            try:
+                H=ssp.csc_matrix(H+H1)
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B)
+            except:
+                H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8+H1)
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B)
 
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
@@ -528,8 +536,10 @@ class tnn_classifier():
 
     def lossWithL2(self,data,lvector,lamb):
         Nnum=len(lvector)
-        environment=self.environment
-        gamma=np.array([environment(self.Nlayer-1,0,0,datan) for datan in data])
+        environment=self.environment2
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore")
+            gamma=np.array([environment(self.Nlayer-1,0,0,datan) for datan in data])
         ln2=tensordot(gamma,self.W[self.Nlayer-1][0][0],axes=([1,2,3,4],[0,1,2,3]))
         lost=np.sum((ln2-lvector)**2)/Nnum+lamb*np.sum(self.testIsometry())
         result=ln2.argmax(axis=1)
@@ -554,10 +564,10 @@ if __name__=="__main__":
     Mnist=mnist.load_data()
     margin,pool=2,4
     data,target=mnist.data_process2D(Mnist,margin,pool,"cosine")
-    Dbond,d,Dout=4,2,10
-    lamb=0.1
+    Dbond,d,Dout=5,2,10
+    lamb=1e-12
     tnn=tnn_classifier(Dbond,d,Dout)
-    trainend,testend=2000,2300
+    trainend,testend=20,30
     train_data,train_target=data[0:trainend],target[0:trainend]
     test_data,test_target=data[trainend:testend],target[trainend:testend]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
@@ -567,10 +577,10 @@ if __name__=="__main__":
     plt.figure("Precision")
     plt.plot(trainprecision)
     plt.plot(testprecision)
-    plt.savefig("TTN/PrecisionPool"+str(pool)+"Dbond"+str(Dbond)+".png")
+    plt.savefig("TTN/5PrecisionPool"+str(pool)+"Dbond"+str(Dbond)+".png")
     plt.figure("Lost")
     plt.plot(trainlost)
     plt.plot(testlost)
-    plt.savefig("TTN/LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
+    plt.savefig("TTN/5LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
 
 
