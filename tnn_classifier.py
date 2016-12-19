@@ -374,7 +374,9 @@ class tnn_classifier():
 
         f=0
         for data_n,l_n in zip(data,lvector):
-            gamma_n=self.environment(nlayer,mx,my,data_n)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                gamma_n=self.environment2(nlayer,mx,my,data_n)
             if nlayer<self.Nlayer-1:
                 ln2=tensordot(self.W[nlayer][mx][my],gamma_n,axes=([4,0,1,2,3],[1,2,3,4,5]))
                 f+=tensordot(ln2-l_n,gamma_n,axes=(0,0))
@@ -484,7 +486,7 @@ class tnn_classifier():
             self.W[nlayer][mx][my]=solution_tem
 
 
-
+    @functimer
     def updateWithLinearEWithL2(self,nlayer,mx,my,data,lvector,lamb):
         """
         :param nlayer:
@@ -500,6 +502,7 @@ class tnn_classifier():
             warnings.simplefilter("ignore")
             gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
         print(time()-t0)
+        print(gamma.max()-gamma.min())
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             gamma1=self.environmentL2(nlayer,mx,my)
@@ -523,11 +526,13 @@ class tnn_classifier():
 
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
-            self.W[nlayer][mx][my]=np.reshape(solution,Wshape)
+            solution_tem=np.reshape(solution,[np.prod(Wshape[0:-1]),Wshape[-1]])
+            self.W[nlayer][mx][my]=np.reshape(solution_tem,Wshape)
+
         else:
             Wshape=self.W[nlayer][mx][my].shape
-            solution_tem=np.reshape(solution.toarray(),Wshape)
-            self.W[nlayer][mx][my]=solution_tem
+            solution_tem=np.reshape(solution.toarray(),[np.prod(Wshape[0:-1]),Wshape[-1]])
+            self.W[nlayer][mx][my]=np.reshape(solution_tem,Wshape)
 
 
 
@@ -558,7 +563,7 @@ class tnn_classifier():
 
 
     def sweep(self,data,lvector,testdata,testlvector,lamb):
-        s=3
+        s=5
         trainlost=[]
         testlost=[]
         trainprecision=[]
@@ -624,8 +629,10 @@ class tnn_classifier():
 
     def lossWithL2(self,data,lvector,lamb):
         Nnum=len(lvector)
-        environment=self.environment
-        gamma=np.array([environment(self.Nlayer-1,0,0,datan) for datan in data])
+        environment=self.environment2
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gamma=np.array([environment(self.Nlayer-1,0,0,datan) for datan in data])
         ln2=tensordot(gamma,self.W[self.Nlayer-1][0][0],axes=([1,2,3,4],[0,1,2,3]))
         lost=np.sum((ln2-lvector)**2)/Nnum+lamb*np.sum(self.testIsometry())
         result=ln2.argmax(axis=1)
@@ -653,7 +660,7 @@ if __name__=="__main__":
     Dbond,d,Dout=5,2,10
     lamb=0
     tnn=tnn_classifier(Dbond,d,Dout)
-    trainend,testend=8000,9000
+    trainend,testend=40000,50000
     train_data,train_target=data[0:trainend],target[0:trainend]
     test_data,test_target=data[trainend:testend],target[trainend:testend]
     tnn.initialize(train_data.shape[1],train_data.shape[2])
@@ -663,10 +670,10 @@ if __name__=="__main__":
     plt.figure("Precision")
     plt.plot(trainprecision)
     plt.plot(testprecision)
-    plt.savefig("TTN/PrecisionPool"+str(pool)+"Dbond"+str(Dbond)+".png")
+    plt.savefig("TTN/4PrecisionPool"+str(pool)+"Dbond"+str(Dbond)+".png")
     plt.figure("Lost")
     plt.plot(trainlost)
     plt.plot(testlost)
-    plt.savefig("TTN/LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
+    plt.savefig("TTN/4LostPool"+str(pool)+"Dbond"+str(Dbond)+".png")
 
 
