@@ -58,7 +58,7 @@ def data_process(mnist,n):
 
 
 @functimer
-def data_process2D(mnist,margin,pool):
+def data_process2D(mnist,margin,pool,kernel):
     reshaped_tar=mnist.target.reshape([len(mnist.target),1])
     Data=np.concatenate((mnist.data, reshaped_tar), axis=1)
     shuffle(Data)
@@ -73,8 +73,12 @@ def data_process2D(mnist,margin,pool):
     psi3=np.concatenate((margincol,psi3,margincol),axis=2)
     marginrow=np.zeros([data0.shape[0],margin,psi3.shape[2]])
     psi3=np.concatenate((marginrow,psi3,marginrow),axis=1)
-    psi1=np.cos(np.pi/2*psi3).reshape(psi3.shape+(1,))
-    psi2=np.sin(np.pi/2*psi3).reshape(psi3.shape+(1,))
+    if kernel=="cosine":
+        psi1=np.cos(np.pi/2*psi3).reshape(psi3.shape+(1,))
+        psi2=np.sin(np.pi/2*psi3).reshape(psi3.shape+(1,))
+    elif kernel=="linear":
+        psi1=psi3.reshape(psi3.shape+(1,))
+        psi2=1.0/4*psi3.reshape(psi3.shape+(1,))
     data=np.concatenate((psi1,psi2),axis=-1)
     lvector=np.zeros([target.shape[0],10])
     for (i,l) in enumerate(lvector):
@@ -86,8 +90,12 @@ def data_process2D(mnist,margin,pool):
         psi3_pooled=np.tensordot(psi3,u,axes=(2,0))
         psi3_pooled=np.tensordot(np.transpose(u),psi3_pooled,axes=(1,1))
         psi3_pooled=np.transpose(psi3_pooled,[1,0,2])
-        psi1_pooled=np.cos(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
-        psi2_pooled=np.sin(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
+        if kernel=="cosine":
+            psi1_pooled=np.cos(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
+            psi2_pooled=np.sin(np.pi/2*psi3_pooled).reshape(psi3_pooled.shape+(1,))
+        elif kernel=="linear":
+            psi1_pooled=psi3_pooled.reshape(psi3_pooled.shape+(1,))
+            psi2_pooled=1.0/4*psi3_pooled.reshape(psi3_pooled.shape+(1,))
         data=np.concatenate((psi1_pooled,psi2_pooled),axis=-1)
         return data,lvector
 
@@ -122,10 +130,6 @@ def data_process2DwithSVD(mnist,margin,pool):
     psi2_pooled=np.sin(np.pi/2*psi_pooled).reshape(psi_pooled.shape+(1,))
     data=np.concatenate((psi1_pooled,psi2_pooled),axis=-1)
     return data,lvector
-
-
-
-
 
 
 
