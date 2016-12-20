@@ -399,7 +399,7 @@ class tnn_classifier():
 
 
     @functimer
-    def updateWithLinearE2(self,nlayer,mx,my,data,lvector):
+    def updateWithLinearE2(self,nlayer,mx,my,data,lvector,lamb):
         """
         :param nlayer:
         :param mx:
@@ -423,27 +423,31 @@ class tnn_classifier():
                 B+=B_n
             else:
                 gammashape=gamma_n.shape
-                gamma_tem=np.reshape(gamma_n,[1,np.prod(gammashape[0:])])
-                H_n=np.dot(np.transpose(gamma_tem),gamma_tem)
-                B_n=np.dot(np.reshape(l_n,l_n.shape+(1,)),gamma_tem)
+                gamma_tem=np.reshape(gamma_n,[np.prod(gammashape[0:]),1])
+                H_n=np.dot(gamma_tem,np.transpose(gamma_tem))
+                B_n=np.dot(gamma_tem,np.reshape(l_n,(1,)+l_n.shape))
                 H+=H_n
                 B+=B_n
         print(time()-t0)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            gamma1=self.environmentL2(nlayer,mx,my)
+        lenshape=len(gamma1.shape)
+        H1=lamb*np.reshape(gamma1,[np.prod(gamma1.shape[0:lenshape//2]),np.prod(gamma1.shape[lenshape//2:])])
         try:
-            H=ssp.csc_matrix(H)
+            H=ssp.csc_matrix(H+H1)
             B=ssp.csc_matrix(B)
             solution=spsolve(H,B)
         except:
-            H=ssp.csc_matrix(H+np.eye(H.shape[0])*1e-8)
+            H=ssp.csc_matrix(H+H1+np.eye(H.shape[0])*1e-8)
             B=ssp.csc_matrix(B)
-            solution=spsolve(H,B.transpose())
+            solution=spsolve(H,B)
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
             self.W[nlayer][mx][my]=np.reshape(solution,Wshape)
         else:
             Wshape=self.W[nlayer][mx][my].shape
-            solution_tem=np.reshape(solution.toarray(),Wshape)
-            self.W[nlayer][mx][my]=np.reshape(solution_tem,Wshape)
+            self.W[nlayer][mx][my]=np.reshape(solution.toarray(),Wshape)
 
 
     @functimer
@@ -500,7 +504,7 @@ class tnn_classifier():
         environment=self.environment2
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            gamma=np.array(list(map(lambda datan:environment(nlayer,mx,my,datan),data)))
+            gamma=np.array(list(map(lambda datan: environment(nlayer, mx, my, datan), data)))
         print(time()-t0)
         print(gamma.max()-gamma.min())
         with warnings.catch_warnings():
@@ -520,9 +524,16 @@ class tnn_classifier():
             B=gamma_tem.dot(lvector)
             H1=lamb*gamma1.reshape([np.prod(gamma1.shape[0:4]),np.prod(gamma1.shape[4:8])])
 
-        H=ssp.csc_matrix(H+H1+np.eye(H.shape[0])*1e-8)
-        B=ssp.csc_matrix(B)
-        solution=spsolve(H,B)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("error")
+            try:
+                H=ssp.csc_matrix(H+H1)
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B)
+            except:
+                H=ssp.csc_matrix(H+H1+1e-08*np.eye(H.shape[0]))
+                B=ssp.csc_matrix(B)
+                solution=spsolve(H,B)
 
         if nlayer<self.Nlayer-1:
             Wshape=self.W[nlayer][mx][my].shape
@@ -531,8 +542,7 @@ class tnn_classifier():
 
         else:
             Wshape=self.W[nlayer][mx][my].shape
-            solution_tem=np.reshape(solution.toarray(),[np.prod(Wshape[0:-1]),Wshape[-1]])
-            self.W[nlayer][mx][my]=np.reshape(solution_tem,Wshape)
+            self.W[nlayer][mx][my]=np.reshape(solution.toarray(),Wshape)
 
 
 
@@ -576,10 +586,10 @@ class tnn_classifier():
 
                         # self.updateWithSVD(i,j,k,data,lvector)
                         # self.update(i,j,k,data,lvector)
-                        if i!=self.Nlayer-1:
+                        if i<self.Nlayer-1:
                             self.updateWithLinearEWithL2(i,j,k,data,lvector,lamb)
                         else:
-                            self.updateWithLinearE2(i,j,k,data,lvector)
+                            self.updateWithLinearE2(i,j,k,data,lvector,lamb)
                         trainlost_i,trainprecision_i=self.test(data,lvector,lamb)
                         testlost_i,testprecision_i=self.test(testdata,testlvector,lamb)
                         trainlost.append(trainlost_i)
@@ -592,6 +602,10 @@ class tnn_classifier():
             pickle.dump(trainlost,f)
         with open("trainpreci.txt","wb") as f2:
             pickle.dump(trainprecision,f2)
+        with open("testlost.txt","wb") as f3:
+            pickle.dump(testlost,f3)
+        with open("testpreci.txt","wb") as f4:
+            pickle.dump(testprecision,f4)
         return trainlost,testlost,trainprecision,testprecision
 
 
@@ -652,12 +666,11 @@ class tnn_classifier():
             self.W=pickle.load(f)
 
 
-
 if __name__=="__main__":
     Mnist=mnist.load_data()
     margin,pool=2,4
     data,target=mnist.data_process2D(Mnist,margin,pool,"cosine")
-    Dbond,d,Dout=5,2,10
+    Dbond,d,Dout=6,2,10
     lamb=0
     tnn=tnn_classifier(Dbond,d,Dout)
     trainend,testend=40000,50000
